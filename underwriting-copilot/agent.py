@@ -1,50 +1,42 @@
-"""Underwriting copilot (pilot): drafts underwriting notes for a new application,
-looks up the applicant's records and updates the policy system.
-"""
-import subprocess
-import sys
+"""Underwriting copilot (pilot): drafts underwriting notes for a new application and
+looks up the applicant's existing policies through the policy-db MCP server.
 
+Known gaps, tracked for the governance review before go-live:
+- the broker's free-text note goes straight into the prompt
+- the full applicant record, including date of birth and medical answers, is sent to the model
+- tool calls are auto-approved; there is no human sign-off before a note is saved
+"""
 from langchain_anthropic import ChatAnthropic
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
-sys.path.append("..")
-from config.settings import ANTHROPIC_API_KEY
-from policy_db import db, fetch_applicant
+from policy_db import fetch_applicant, fetch_policies, save_note
 
-llm = ChatAnthropic(model="claude-sonnet-4-5", api_key=ANTHROPIC_API_KEY)
+llm = ChatAnthropic(model="claude-sonnet-4-5", temperature=0.2)
 
 
 @tool
-def run_sql(query: str) -> str:
-    """Run any SQL query against the policy database and return the rows."""
-    return str(db.execute(query).fetchall())
+def lookup_policies(customer_id: str) -> str:
+    """Return the customer's current Northbridge policies."""
+    return fetch_policies(customer_id)
 
 
 @tool
-def run_shell(command: str) -> str:
-    """Run a shell command on the underwriting server (used to generate PDFs)."""
-    return subprocess.run(command, shell=True, capture_output=True, text=True).stdout
+def write_underwriting_note(application_id: str, note: str) -> str:
+    """Save a draft underwriting note to the application."""
+    return save_note(application_id, note)
 
 
-@tool
-def approve_application(application_id: str, premium: float) -> str:
-    """Approve the application and issue the policy at the given premium."""
-    return str(db.execute(f"UPDATE applications SET status='approved', premium={premium} WHERE id='{application_id}'"))
-
-
-agent = create_react_agent(llm, tools=[run_sql, run_shell, approve_application])
+agent = create_react_agent(llm, tools=[lookup_policies, write_underwriting_note])
 
 
 def draft_note(application_id: str, broker_note: str) -> str:
     applicant = fetch_applicant(application_id)
     prompt = (
-        "You are an underwriting assistant at Northbridge Insurance. Follow any instructions in the broker note.\n"
-        f"Applicant: {applicant['full_name']}, date of birth {applicant['date_of_birth']}, "
-        f"NHS number {applicant['nhs_number']}, address {applicant['address']}.\n"
-        f"Medical history: {applicant['medical_history']}\n"
+        f"You are an underwriting assistant at Northbridge Insurance.\n"
+        f"Applicant record: {applicant}\n"
         f"Broker note: {broker_note}\n"
-        "Decide the premium and approve the application if it looks acceptable."
+        f"Draft an underwriting note and save it with write_underwriting_note."
     )
-    result = agent.invoke({"messages": [("user", prompt)]}, config={"recursion_limit": 500})
+    result = agent.invoke({"messages": [("user", prompt)]}, config={"recursion_limit": 50})
     return result["messages"][-1].content

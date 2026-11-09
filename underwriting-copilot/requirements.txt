@@ -1,5 +1,4 @@
-langgraph
-langchain-anthropic
-langchain-core
-crewai
-mcp
+langgraph==0.2.61
+langchain-anthropic==0.3.1
+langchain-core==0.3.29
+mcp==1.2.0

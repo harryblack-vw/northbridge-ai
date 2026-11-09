@@ -1,6 +1,6 @@
 # Northbridge Insurance: AI services
 
-> **Demo repository.** Northbridge Insurance is a fictional company. This code exists to show what VerifyWise AI Detection finds when it scans a repository. It is not production code. Every credential in it, including `config/settings.py` and `underwriting-copilot/tests/`, is a fake placeholder that does not work.
+> **Demo repository.** Northbridge Insurance is a fictional company. This code exists to show what VerifyWise AI Detection finds when it scans a repository. It is not production code, and the credential in `underwriting-copilot/tests/` is a fake placeholder.
 
 Three services, one folder each:
 

@@ -1,9 +1,12 @@
-"""Thin client for the policy-db MCP server (see mcp.json)."""
-from mcp import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
+"""Policy database access for the copilot, plus the policy-db MCP client."""
 import asyncio
 import json
+import sqlite3
 
+from mcp import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
+
+db = sqlite3.connect("/srv/underwriting/policies.db", check_same_thread=False)
 SERVER = StdioServerParameters(command="npx", args=["-y", "@northbridge/policy-db-mcp"])
 
 
@@ -17,11 +20,3 @@ async def _call(tool: str, **kwargs):
 
 def fetch_applicant(application_id: str):
     return asyncio.run(_call("get_applicant", application_id=application_id))
-
-
-def fetch_policies(customer_id: str):
-    return asyncio.run(_call("get_policies", customer_id=customer_id))
-
-
-def save_note(application_id: str, note: str):
-    return asyncio.run(_call("save_underwriting_note", application_id=application_id, note=note))

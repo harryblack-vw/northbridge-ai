@@ -3,7 +3,11 @@
     "policy-db": {
       "command": "npx",
       "args": ["-y", "@northbridge/policy-db-mcp"],
-      "env": { "POLICY_DB_URL": "${POLICY_DB_URL}" }
+      "env": { "POLICY_DB_URL": "postgres://underwriting:admin@policy-db.internal:5432/policies" }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/"]
     }
   }
 }

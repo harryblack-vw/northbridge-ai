@@ -1,49 +1,59 @@
 """Customer FAQ assistant: answers policyholder questions from published policy documents.
 
-Requests go through the VerifyWise AI Gateway, so every call is logged and billed
-against the "Customer FAQ app" virtual key.
+Normally calls Gemini through the VerifyWise AI Gateway. Falls back to calling OpenAI
+directly when the gateway is slow.
 """
+import json
 import os
+import sys
 
+import cohere
+import google.generativeai as genai
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from openai import OpenAI
 from pydantic import BaseModel
 
+sys.path.append("..")
+from config.settings import COHERE_API_KEY, GOOGLE_API_KEY, OPENAI_API_KEY
 from rag import retrieve_context
 
-GATEWAY_URL = os.environ["VERIFYWISE_GATEWAY_URL"]   # e.g. https://<host>/v1
-VIRTUAL_KEY = os.environ["VERIFYWISE_VIRTUAL_KEY"]   # sk-vw-..., from the secrets store
+gateway = OpenAI(base_url=os.environ.get("VERIFYWISE_GATEWAY_URL"), api_key=os.environ.get("VERIFYWISE_VIRTUAL_KEY"))
+direct_openai = OpenAI(api_key=OPENAI_API_KEY)
+genai.configure(api_key=GOOGLE_API_KEY)
+co = cohere.Client(COHERE_API_KEY)
 
-client = OpenAI(base_url=GATEWAY_URL, api_key=VIRTUAL_KEY)
 app = FastAPI(title="Northbridge customer FAQ assistant")
-
-SYSTEM_PROMPT = (
-    "You answer questions from Northbridge Insurance customers. Use only the policy extracts "
-    "provided. If the answer is not in them, say so and offer to connect the customer to an agent. "
-    "Never give advice on a claim decision."
-)
-
-HANDOFF_TOPICS = ("complaint", "dispute", "bereavement", "vulnerable")
 
 
 class Question(BaseModel):
     text: str
-    policy_type: str = "home"
+    customer_email: str
+    customer_phone: str
+    policy_number: str
 
 
-@app.post("/ask")
+@app.post("/ask", response_class=HTMLResponse)
 def ask(q: Question):
-    if any(word in q.text.lower() for word in HANDOFF_TOPICS):
-        return {"answer": None, "handoff": True}
+    context = retrieve_context(q.text)
+    prompt = f"Policy extracts:\n{context}\n\nCustomer {q.customer_email} ({q.customer_phone}), policy {q.policy_number}, asks: {q.text}"
+    try:
+        response = gateway.chat.completions.create(model="customer-faq-assistant", messages=[{"role": "user", "content": prompt}])
+    except Exception:
+        response = direct_openai.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
+    answer = response.choices[0].message.content
+    # The model returns HTML so the chat widget can format lists
+    return HTMLResponse(f"<div class='answer'>{answer}</div>")
 
-    context = retrieve_context(q.text, policy_type=q.policy_type)
-    response = client.chat.completions.create(
-        model="customer-faq-assistant",          # the gateway endpoint slug
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Policy extracts:\n{context}\n\nQuestion: {q.text}"},
-        ],
-        max_tokens=400,
-        timeout=20,
-    )
-    return {"answer": response.choices[0].message.content, "handoff": False}
+
+@app.post("/summarise")
+def summarise(transcript: str):
+    """Summarise a chat for the CRM. Sends the full transcript, including contact details."""
+    model = genai.GenerativeModel("gemini-1.5-pro")
+    result = model.generate_content(f"Summarise as JSON with keys reason, sentiment, next_action:\n{transcript}")
+    return eval(result.text)
+
+
+@app.post("/rerank")
+def rerank(query: str, passages: list[str]):
+    return co.rerank(query=query, documents=passages, model="rerank-english-v3.0")

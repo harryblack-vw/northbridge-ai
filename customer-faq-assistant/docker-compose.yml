@@ -1,0 +1,15 @@
+services:
+  faq-assistant:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      VERIFYWISE_GATEWAY_URL: ${VERIFYWISE_GATEWAY_URL}
+      VERIFYWISE_VIRTUAL_KEY: ${VERIFYWISE_VIRTUAL_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      QDRANT_URL: http://qdrant:6333
+    depends_on: [qdrant]
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    volumes: ["qdrant-data:/qdrant/storage"]
+volumes:
+  qdrant-data:

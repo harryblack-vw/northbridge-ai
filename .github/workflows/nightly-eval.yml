@@ -1,0 +1,32 @@
+name: Nightly evaluation
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  faq-assistant-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r customer-faq-assistant/requirements.txt
+      - name: Run regression questions through the gateway
+        env:
+          VERIFYWISE_GATEWAY_URL: ${{ secrets.VERIFYWISE_GATEWAY_URL }}
+          VERIFYWISE_VIRTUAL_KEY: ${{ secrets.VERIFYWISE_VIRTUAL_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: python -m customer-faq-assistant.eval
+
+  copilot-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r underwriting-copilot/requirements.txt pytest
+      - name: Smoke test
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: pytest underwriting-copilot/tests
